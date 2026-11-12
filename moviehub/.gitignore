@@ -1,3 +1,4 @@
 .jwt_secret
 .env
-.env.backup
+.env.backup.env
+
