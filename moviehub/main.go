@@ -23,7 +23,7 @@ func main() {
     if err != nil {
         log.Println("Warning: ไม่พบไฟล์ .env")
     }
-    
+
     secret := os.Getenv("JWT_SECRET")
     if len(secret) < 32 {
         log.Fatal("JWT_SECRET ต้องยาวอย่างน้อย 32 ตัวอักษร")
@@ -48,6 +48,16 @@ func main() {
     mux.HandleFunc("POST /api/auth/register", h.Register)
     mux.HandleFunc("POST /api/auth/login", h.Login)
     mux.HandleFunc("GET /api/me", login(h.Me))
+    
+    mux.HandleFunc("PUT /api/me", login(h.UpdateMe))
+    mux.HandleFunc("PUT /api/me/password", login(h.ChangePassword))
+    mux.HandleFunc("GET /api/wishlist", login(h.ListWishlist))
+    mux.HandleFunc("POST /api/wishlist", login(h.AddWishlist))
+    mux.HandleFunc("DELETE /api/wishlist/{id}", login(h.RemoveWishlist))
+    mux.HandleFunc("PUT /api/games/{id}/vote", login(h.VoteGame))
+    mux.HandleFunc("POST /api/games/{id}/reviews", login(h.AddReview))
+    mux.HandleFunc("DELETE /api/reviews/{id}", login(h.DeleteReview))
+
     mux.HandleFunc("GET /api/genres", h.Genres)
      mux.HandleFunc("GET /api/games", h.SearchGames)
     mux.HandleFunc("GET /api/games/{id}", h.GetGame)
