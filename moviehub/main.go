@@ -10,7 +10,7 @@ import (
 
      "github.com/jackc/pgx/v5/pgxpool"
     _ "github.com/joho/godotenv/autoload" // โหลด .env ให้เองถ้ามีไฟล์ (ในเครื่อง) บน Render ไม่มีไฟล์ก็เงียบ
-
+    "github.com/joho/godotenv"
 
     "moviehub/auth"
     "moviehub/handler"
@@ -19,6 +19,11 @@ import (
 )
 
 func main() {
+     err := godotenv.Load()
+    if err != nil {
+        log.Println("Warning: ไม่พบไฟล์ .env")
+    }
+    
     secret := os.Getenv("JWT_SECRET")
     if len(secret) < 32 {
         log.Fatal("JWT_SECRET ต้องยาวอย่างน้อย 32 ตัวอักษร")
@@ -44,18 +49,18 @@ func main() {
     mux.HandleFunc("POST /api/auth/login", h.Login)
     mux.HandleFunc("GET /api/me", login(h.Me))
     mux.HandleFunc("GET /api/genres", h.Genres)
-    mux.HandleFunc("GET /api/movies", h.SearchMovies)
-    mux.HandleFunc("GET /api/movies/{id}", h.GetMovie)
-    mux.HandleFunc("GET /api/movies/{id}/reviews", h.ListReviews)
+     mux.HandleFunc("GET /api/games", h.SearchGames)
+    mux.HandleFunc("GET /api/games/{id}", h.GetGame)
+    mux.HandleFunc("GET /api/games/{id}/reviews", h.ListReviews)
 
      // หลังบ้าน: ทุกเส้นทางใต้ /api/admin ผ่าน admin(...) ไม่มีข้อยกเว้น
     mux.HandleFunc("GET /api/admin/stats", admin(h.AdminStats))
     mux.HandleFunc("GET /api/admin/members", admin(h.AdminMembers))
     mux.HandleFunc("PUT /api/admin/members/{id}/role", admin(h.AdminSetRole))
-    mux.HandleFunc("GET /api/admin/movies/{id}", admin(h.AdminGetMovie))
-    mux.HandleFunc("POST /api/admin/movies", admin(h.AdminCreateMovie))
-    mux.HandleFunc("PUT /api/admin/movies/{id}", admin(h.AdminUpdateMovie))
-    mux.HandleFunc("DELETE /api/admin/movies/{id}", admin(h.AdminDeleteMovie))
+      mux.HandleFunc("GET /api/admin/games/{id}", admin(h.AdminGetGame))
+    mux.HandleFunc("POST /api/admin/games", admin(h.AdminCreateGame))
+    mux.HandleFunc("PUT /api/admin/games/{id}", admin(h.AdminUpdateGame))
+    mux.HandleFunc("DELETE /api/admin/games/{id}", admin(h.AdminDeleteGame))
     // mux.HandleFunc("GET /api/me", login(h.Me))
     // mux.HandleFunc("POST /api/movies/{id}/reviews", login(h.AddReview))
     // mux.HandleFunc("DELETE /api/reviews/{reviewId}", login(h.DeleteReview))

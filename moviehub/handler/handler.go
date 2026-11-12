@@ -7,12 +7,12 @@ import (
 	"net/http"
 	"strconv"
 
-	"moviehub/store"
 	"moviehub/auth"
+	"moviehub/store"
 )
 
 type Handler struct {
-	Store *store.Store
+	Store   *store.Store
 	Tickets *auth.Issuer
 }
 
@@ -28,7 +28,6 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 	})
 }
 
-// internal จดรายละเอียดไว้ใน log ฝั่งเรา แต่บอกผู้ใช้แค่ว่าระบบขัดข้อง
 func internal(w http.ResponseWriter, err error) {
 	log.Printf("internal error: %v", err)
 	writeError(w, http.StatusInternalServerError, "INTERNAL", "ระบบขัดข้อง ลองใหม่อีกครั้ง")
@@ -39,8 +38,11 @@ func pathID(r *http.Request, name string) (int64, bool) {
 	return id, err == nil && id > 0
 }
 
-func (h *Handler) SearchMovies(w http.ResponseWriter, r *http.Request) {
-	items, err := h.Store.SearchMovies(r.Context(), r.URL.Query().Get("q"))
+// SearchGames รับ ?q= &genre= &players= &sort=
+func (h *Handler) SearchGames(w http.ResponseWriter, r *http.Request) {
+	qs := r.URL.Query()
+	items, err := h.Store.SearchGames(r.Context(),
+		qs.Get("q"), qs.Get("genre"), qs.Get("players"), qs.Get("sort"))
 	if err != nil {
 		internal(w, err)
 		return
@@ -48,38 +50,34 @@ func (h *Handler) SearchMovies(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
-func (h *Handler) ListReviews(w http.ResponseWriter, r *http.Request) {
-	movieID, ok := pathID(r, "id")
-	if !ok {
-		writeError(w, http.StatusBadRequest, "BAD_ID", "เลขหนังต้องเป็นตัวเลข")
-		return
-	}
-	items, err := h.Store.ListReviews(r.Context(), movieID)
-	if err != nil {
-		internal(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
-}
-
-// GetMovie แสดงรายละเอียดหนังหนึ่งเรื่อง
-func (h *Handler) GetMovie(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GetGame(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(r, "id")
 	if !ok {
-		writeError(w, http.StatusBadRequest, "BAD_ID", "เลขหนังต้องเป็นตัวเลข")
+		writeError(w, http.StatusBadRequest, "BAD_ID", "เลขเกมต้องเป็นตัวเลข")
 		return
 	}
-
-	m, err := h.Store.GetMovie(r.Context(), id)
-
+	g, err := h.Store.GetGame(r.Context(), id)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		writeError(w, http.StatusNotFound, "MOVIE_NOT_FOUND", "ไม่พบหนังเรื่องนี้")
+		writeError(w, http.StatusNotFound, "GAME_NOT_FOUND", "ไม่พบเกมนี้")
 		return
 	case err != nil:
 		internal(w, err)
 		return
 	}
+	writeJSON(w, http.StatusOK, g)
+}
 
-	writeJSON(w, http.StatusOK, m)
+func (h *Handler) ListReviews(w http.ResponseWriter, r *http.Request) {
+	gameID, ok := pathID(r, "id")
+	if !ok {
+		writeError(w, http.StatusBadRequest, "BAD_ID", "เลขเกมต้องเป็นตัวเลข")
+		return
+	}
+	items, err := h.Store.ListReviews(r.Context(), gameID)
+	if err != nil {
+		internal(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
