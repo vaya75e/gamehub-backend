@@ -1,0 +1,90 @@
+package main
+
+import (
+    "context"
+    "log"
+    "net/http"
+    "os"
+    "time"
+    "strings"
+
+     "github.com/jackc/pgx/v5/pgxpool"
+    _ "github.com/joho/godotenv/autoload" // โหลด .env ให้เองถ้ามีไฟล์ (ในเครื่อง) บน Render ไม่มีไฟล์ก็เงียบ
+    "github.com/joho/godotenv"
+
+    "gamehub/auth"
+    "gamehub/handler"
+    "gamehub/mw"
+    "gamehub/store"
+)
+
+func main() {
+     err := godotenv.Load()
+    if err != nil {
+        log.Println("Warning: ไม่พบไฟล์ .env")
+    }
+
+    secret := os.Getenv("JWT_SECRET")
+    if len(secret) < 32 {
+        log.Fatal("JWT_SECRET ต้องยาวอย่างน้อย 32 ตัวอักษร")
+    }
+    pool, err := pgxpool.New(context.Background(), os.Getenv("DATABASE_URL"))
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer pool.Close()
+    if err := pool.Ping(context.Background()); err != nil {
+        log.Fatal("ต่อฐานข้อมูลไม่ติด ", err)
+    }
+
+    tickets := &auth.Issuer{Secret: []byte(secret), TTL: time.Hour}
+    h := &handler.Handler{Store: &store.Store{Pool: pool}, Tickets: tickets}
+
+    // login = ต้องมีตั๋ว, admin = ต้องมีตั๋วและบทบาทเป็น admin (ตรวจตั๋วก่อนเสมอ ค่อยดูบทบาท)
+    login := func(next http.HandlerFunc) http.HandlerFunc { return mw.RequireLogin(tickets, next) }
+    admin := func(next http.HandlerFunc) http.HandlerFunc { return login(mw.RequireRole("admin", next)) }
+
+    mux := http.NewServeMux()
+    mux.HandleFunc("POST /api/auth/register", h.Register)
+    mux.HandleFunc("POST /api/auth/login", h.Login)
+    mux.HandleFunc("GET /api/me", login(h.Me))
+    
+    mux.HandleFunc("PUT /api/me", login(h.UpdateMe))
+    mux.HandleFunc("PUT /api/me/password", login(h.ChangePassword))
+    mux.HandleFunc("GET /api/wishlist", login(h.ListWishlist))
+    mux.HandleFunc("POST /api/wishlist", login(h.AddWishlist))
+    mux.HandleFunc("DELETE /api/wishlist/{id}", login(h.RemoveWishlist))
+    mux.HandleFunc("PUT /api/games/{id}/vote", login(h.VoteGame))
+    mux.HandleFunc("POST /api/games/{id}/reviews", login(h.AddReview))
+    mux.HandleFunc("DELETE /api/reviews/{id}", login(h.DeleteReview))
+
+    mux.HandleFunc("GET /api/genres", h.Genres)
+     mux.HandleFunc("GET /api/games", h.SearchGames)
+    mux.HandleFunc("GET /api/games/{id}", h.GetGame)
+    mux.HandleFunc("GET /api/games/{id}/reviews", h.ListReviews)
+
+     // หลังบ้าน: ทุกเส้นทางใต้ /api/admin ผ่าน admin(...) ไม่มีข้อยกเว้น
+    mux.HandleFunc("GET /api/admin/stats", admin(h.AdminStats))
+    mux.HandleFunc("GET /api/admin/members", admin(h.AdminMembers))
+    mux.HandleFunc("PUT /api/admin/members/{id}/role", admin(h.AdminSetRole))
+      mux.HandleFunc("GET /api/admin/games/{id}", admin(h.AdminGetGame))
+    mux.HandleFunc("POST /api/admin/games", admin(h.AdminCreateGame))
+    mux.HandleFunc("PUT /api/admin/games/{id}", admin(h.AdminUpdateGame))
+    mux.HandleFunc("DELETE /api/admin/games/{id}", admin(h.AdminDeleteGame))
+    // mux.HandleFunc("GET /api/me", login(h.Me))
+    // mux.HandleFunc("POST /api/movies/{id}/reviews", login(h.AddReview))
+    // mux.HandleFunc("DELETE /api/reviews/{reviewId}", login(h.DeleteReview))
+    // mux.HandleFunc("GET /api/admin/members", login(mw.RequireRole("admin", h.AdminMembers)))
+
+    origins := strings.Split(os.Getenv("ALLOWED_ORIGINS"), ",")
+    
+    port := os.Getenv("PORT") // Render ส่งมาให้ ในเครื่องไม่มีก็ใช้ 8080
+    if port == "" {
+        port = "8080"
+    }
+    
+    log.Println("GameHub API ฟังอยู่ที่ :"+port, "ต้อนรับ", origins)
+    log.Fatal(http.ListenAndServe(":"+port, mw.Logging(mw.CORS(origins, mux))))
+    // log.Println("MovieHub API ฟังอยู่ที่ :8080 ต้อนรับ", origins)
+    // log.Fatal(http.ListenAndServe(":8080", mw.Logging(mw.CORS(origins, mux))))
+}
