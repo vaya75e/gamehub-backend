@@ -7,8 +7,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"moviehub/mw"
-	"moviehub/store"
+	"gamehub/mw"
+	"gamehub/store"
 )
 
 type reviewReq struct {

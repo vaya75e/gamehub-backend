@@ -7,9 +7,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"moviehub/auth"
-	"moviehub/mw"
-	"moviehub/store"
+	"gamehub/auth"
+	"gamehub/mw"
+	"gamehub/store"
 )
 
 type updateMeReq struct {

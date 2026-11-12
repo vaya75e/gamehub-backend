@@ -7,8 +7,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"moviehub/mw"
-	"moviehub/store"
+	"gamehub/mw"
+	"gamehub/store"
 )
 
 // ทุก handler ในไฟล์นี้ถูกครอบด้วย RequireLogin + RequireRole("admin") ใน main.go แล้ว

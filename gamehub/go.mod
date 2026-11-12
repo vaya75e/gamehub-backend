@@ -1,4 +1,4 @@
-module moviehub
+module gamehub
 
 go 1.27.1
 

@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"unicode/utf8"
 
-	"moviehub/mw"
-	"moviehub/store"
+	"gamehub/mw"
+	"gamehub/store"
 )
 
 func (h *Handler) ListWishlist(w http.ResponseWriter, r *http.Request) {

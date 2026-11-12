@@ -6,7 +6,7 @@ import (
     "net/http"
     "strings"
 
-    "moviehub/auth"
+    "gamehub/auth"
 )
 
 type ctxKey int

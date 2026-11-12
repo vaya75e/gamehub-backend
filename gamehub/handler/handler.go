@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"moviehub/auth"
-	"moviehub/store"
+	"gamehub/auth"
+	"gamehub/store"
 )
 
 type Handler struct {

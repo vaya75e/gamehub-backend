@@ -7,9 +7,9 @@ import (
     "strings"
     "unicode/utf8"
 
-    "moviehub/auth"
-    "moviehub/store"
-    "moviehub/mw"
+    "gamehub/auth"
+    "gamehub/store"
+    "gamehub/mw"
 )
 
 type registerReq struct {

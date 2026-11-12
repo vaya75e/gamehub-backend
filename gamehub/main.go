@@ -12,10 +12,10 @@ import (
     _ "github.com/joho/godotenv/autoload" // โหลด .env ให้เองถ้ามีไฟล์ (ในเครื่อง) บน Render ไม่มีไฟล์ก็เงียบ
     "github.com/joho/godotenv"
 
-    "moviehub/auth"
-    "moviehub/handler"
-    "moviehub/mw"
-    "moviehub/store"
+    "gamehub/auth"
+    "gamehub/handler"
+    "gamehub/mw"
+    "gamehub/store"
 )
 
 func main() {
@@ -83,7 +83,7 @@ func main() {
         port = "8080"
     }
     
-    log.Println("MovieHub API ฟังอยู่ที่ :"+port, "ต้อนรับ", origins)
+    log.Println("GameHub API ฟังอยู่ที่ :"+port, "ต้อนรับ", origins)
     log.Fatal(http.ListenAndServe(":"+port, mw.Logging(mw.CORS(origins, mux))))
     // log.Println("MovieHub API ฟังอยู่ที่ :8080 ต้อนรับ", origins)
     // log.Fatal(http.ListenAndServe(":8080", mw.Logging(mw.CORS(origins, mux))))

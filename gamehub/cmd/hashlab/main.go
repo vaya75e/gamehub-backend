@@ -7,7 +7,7 @@ import (
 
     "golang.org/x/crypto/bcrypt"
 
-    "moviehub/auth"
+    "gamehub/auth"
 )
 
 func main() {
