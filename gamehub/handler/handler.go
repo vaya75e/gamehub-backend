@@ -38,11 +38,21 @@ func pathID(r *http.Request, name string) (int64, bool) {
 	return id, err == nil && id > 0
 }
 
-// SearchGames รับ ?q= &genre= &players= &sort=
+// SearchGames รับ ?q= &genre= &mode= &sort=
 func (h *Handler) SearchGames(w http.ResponseWriter, r *http.Request) {
 	qs := r.URL.Query()
 	items, err := h.Store.SearchGames(r.Context(),
-		qs.Get("q"), qs.Get("genre"), qs.Get("players"), qs.Get("sort"))
+		qs.Get("q"), qs.Get("genre"), qs.Get("mode"), qs.Get("sort"))
+	if err != nil {
+		internal(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// PlayerModes ตัวเลือกโหมดผู้เล่น (สาธารณะ ใช้ทำ checkbox)
+func (h *Handler) PlayerModes(w http.ResponseWriter, r *http.Request) {
+	items, err := h.Store.ListPlayerModes(r.Context())
 	if err != nil {
 		internal(w, err)
 		return

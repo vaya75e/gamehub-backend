@@ -93,21 +93,54 @@ func validateGame(in *store.GameInput) (code, message string) {
 	in.Title = strings.TrimSpace(in.Title)
 	in.ImageURL = trimPtr(in.ImageURL)
 	in.Description = trimPtr(in.Description)
-	in.Players = trimPtr(in.Players)
-	in.DownloadURL = trimPtr(in.DownloadURL)
-	in.Platform = trimPtr(in.Platform)
 
 	if in.Title == "" || utf8.RuneCountInString(in.Title) > 255 {
 		return "BAD_TITLE", "ต้องมีชื่อเกม และยาวไม่เกิน 255 ตัวอักษร"
 	}
-	if in.Price < 0 {
-		return "BAD_PRICE", "ราคาต้องไม่ติดลบ (0 = ฟรี)"
-	}
 	if in.ImageURL != nil && !strings.HasPrefix(*in.ImageURL, "http") {
-		return "BAD_IMAGE", "รูปเกมต้องเป็น URL เต็ม (https://...)"
+		return "BAD_IMAGE", "รูปปกต้องเป็น URL เต็ม (https://...)"
 	}
-	if in.DownloadURL != nil && !strings.HasPrefix(*in.DownloadURL, "http") {
-		return "BAD_DOWNLOAD", "ช่องทางดาวน์โหลดต้องเป็น URL เต็ม (https://...)"
+	if len(in.Images) > 8 {
+		return "TOO_MANY_IMAGES", "รูปเพิ่มเติมได้ไม่เกิน 8 รูป"
+	}
+	clean := []string{}
+	for _, u := range in.Images {
+		u = strings.TrimSpace(u)
+		if u == "" {
+			continue
+		}
+		if !strings.HasPrefix(u, "http") {
+			return "BAD_IMAGE", "รูปเพิ่มเติมต้องเป็น URL เต็ม (https://...)"
+		}
+		clean = append(clean, u)
+	}
+	in.Images = clean
+
+	if len(in.Platforms) == 0 {
+		return "BAD_PLATFORM", "ต้องมีอย่างน้อย 1 แพลตฟอร์ม"
+	}
+	seen := map[string]bool{}
+	for i := range in.Platforms {
+		p := &in.Platforms[i]
+		p.Platform = strings.TrimSpace(p.Platform)
+		p.DownloadURL = trimPtr(p.DownloadURL)
+		key := strings.ToLower(p.Platform)
+		if p.Platform == "" || utf8.RuneCountInString(p.Platform) > 50 {
+			return "BAD_PLATFORM", "ชื่อแพลตฟอร์มต้องมี และยาวไม่เกิน 50 ตัวอักษร"
+		}
+		if seen[key] {
+			return "DUP_PLATFORM", "แพลตฟอร์มซ้ำกัน: " + p.Platform
+		}
+		seen[key] = true
+		if p.Price < 0 {
+			return "BAD_PRICE", "ราคาต้องไม่ติดลบ (0 = ฟรี)"
+		}
+		if p.DiscountPercent < 0 || p.DiscountPercent > 100 {
+			return "BAD_DISCOUNT", "ส่วนลดต้องอยู่ระหว่าง 0-100 เปอร์เซ็นต์"
+		}
+		if p.DownloadURL != nil && !strings.HasPrefix(*p.DownloadURL, "http") {
+			return "BAD_DOWNLOAD", "ช่องทางดาวน์โหลดต้องเป็น URL เต็ม (https://...)"
+		}
 	}
 	return "", ""
 }

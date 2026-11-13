@@ -59,7 +59,8 @@ func main() {
     mux.HandleFunc("DELETE /api/reviews/{id}", login(h.DeleteReview))
 
     mux.HandleFunc("GET /api/genres", h.Genres)
-     mux.HandleFunc("GET /api/games", h.SearchGames)
+    mux.HandleFunc("GET /api/player-modes", h.PlayerModes)
+    mux.HandleFunc("GET /api/games", h.SearchGames)
     mux.HandleFunc("GET /api/games/{id}", h.GetGame)
     mux.HandleFunc("GET /api/games/{id}/reviews", h.ListReviews)
 
@@ -67,7 +68,7 @@ func main() {
     mux.HandleFunc("GET /api/admin/stats", admin(h.AdminStats))
     mux.HandleFunc("GET /api/admin/members", admin(h.AdminMembers))
     mux.HandleFunc("PUT /api/admin/members/{id}/role", admin(h.AdminSetRole))
-      mux.HandleFunc("GET /api/admin/games/{id}", admin(h.AdminGetGame))
+    mux.HandleFunc("GET /api/admin/games/{id}", admin(h.AdminGetGame))
     mux.HandleFunc("POST /api/admin/games", admin(h.AdminCreateGame))
     mux.HandleFunc("PUT /api/admin/games/{id}", admin(h.AdminUpdateGame))
     mux.HandleFunc("DELETE /api/admin/games/{id}", admin(h.AdminDeleteGame))

@@ -113,14 +113,13 @@ func (s *Store) ListGenres(ctx context.Context) ([]Genre, error) {
 // ---------- เกม: มุมมองของ admin ----------
 
 type GameInput struct {
-	Title       string  `json:"title"`
-	ImageURL    *string `json:"imageUrl"`
-	Price       float64 `json:"price"`
-	Description *string `json:"description"`
-	Players     *string `json:"players"`
-	DownloadURL *string `json:"downloadUrl"`
-	Platform    *string `json:"platform"`
-	GenreID     *int    `json:"genreId"` // แนวหลัก (position 0) หรือ null
+	Title         string         `json:"title"`
+	ImageURL      *string        `json:"imageUrl"` // รูปปก
+	Description   *string        `json:"description"`
+	GenreIDs      []int          `json:"genreIds"`      // หลายแนว ตัวแรก = แนวหลัก
+	PlayerModeIDs []int          `json:"playerModeIds"` // หลายโหมด
+	Images        []string       `json:"images"`        // รูปเพิ่มเติม
+	Platforms     []GamePlatform `json:"platforms"`
 }
 
 // Impact บอกว่าถ้าลบเกมนี้ ข้อมูลสมาชิกจะหายตามไปเท่าไร (ON DELETE CASCADE)
@@ -137,44 +136,160 @@ type AdminGame struct {
 	Impact    Impact    `json:"impact"`
 }
 
+func (s *Store) intList(ctx context.Context, query string, gameID int64) ([]int, error) {
+	rows, err := s.Pool.Query(ctx, query, gameID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []int{}
+	for rows.Next() {
+		var n int
+		if err := rows.Scan(&n); err != nil {
+			return nil, err
+		}
+		out = append(out, n)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) AdminGetGame(ctx context.Context, id int64) (AdminGame, error) {
 	var g AdminGame
 	err := s.Pool.QueryRow(ctx,
-		`SELECT g.id, g.title, g.image_url, g.price::float8, g.description, g.players,
-                g.download_url, g.platform,
-                (SELECT genre_id FROM game_genres WHERE game_id = g.id AND position = 0),
-                g.updated_at,
+		`SELECT g.id, g.title, g.image_url, g.description, g.updated_at,
                 (SELECT count(*) FROM reviews        WHERE game_id = g.id),
                 (SELECT count(*) FROM votes          WHERE game_id = g.id),
                 (SELECT count(*) FROM wishlist_items WHERE game_id = g.id)
          FROM games g WHERE g.id = $1`, id).
-		Scan(&g.ID, &g.Title, &g.ImageURL, &g.Price, &g.Description, &g.Players,
-			&g.DownloadURL, &g.Platform, &g.GenreID, &g.UpdatedAt,
+		Scan(&g.ID, &g.Title, &g.ImageURL, &g.Description, &g.UpdatedAt,
 			&g.Impact.Reviews, &g.Impact.Votes, &g.Impact.Wishlist)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return g, ErrNotFound
 	}
+	if err != nil {
+		return g, err
+	}
+	if g.GenreIDs, err = s.intList(ctx,
+		`SELECT genre_id FROM game_genres WHERE game_id = $1 ORDER BY position`, id); err != nil {
+		return g, err
+	}
+	if g.PlayerModeIDs, err = s.intList(ctx,
+		`SELECT mode_id FROM game_player_modes WHERE game_id = $1 ORDER BY mode_id`, id); err != nil {
+		return g, err
+	}
+	if g.Images, err = s.gameImages(ctx, id); err != nil {
+		return g, err
+	}
+	g.Platforms, err = s.gamePlatforms(ctx, id)
 	return g, err
 }
 
-func setMainGenre(ctx context.Context, tx pgx.Tx, gameID int64, genreID *int) error {
-	if genreID == nil {
-		_, err := tx.Exec(ctx, `DELETE FROM game_genres WHERE game_id = $1 AND position = 0`, gameID)
+// setGenres แทนที่แนวทั้งหมด ตัวแรกในรายการได้ position 0 (แนวหลัก)
+func setGenres(ctx context.Context, tx pgx.Tx, gameID int64, ids []int) error {
+	if _, err := tx.Exec(ctx, `DELETE FROM game_genres WHERE game_id = $1`, gameID); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx,
-		`DELETE FROM game_genres WHERE game_id = $1 AND (position = 0 OR genre_id = $2)`,
-		gameID, *genreID); err != nil {
+	seen := map[int]bool{}
+	pos := 0
+	for _, gid := range ids {
+		if seen[gid] {
+			continue
+		}
+		seen[gid] = true
+		_, err := tx.Exec(ctx,
+			`INSERT INTO game_genres (game_id, genre_id, position) VALUES ($1, $2, $3)`,
+			gameID, gid, pos)
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+			return ErrBadGenre
+		}
+		if err != nil {
+			return err
+		}
+		pos++
+	}
+	return nil
+}
+
+// setPlayerModes แทนที่โหมดผู้เล่นทั้งหมด และสรุปเป็นข้อความลงช่อง games.players
+func setPlayerModes(ctx context.Context, tx pgx.Tx, gameID int64, ids []int) error {
+	if _, err := tx.Exec(ctx, `DELETE FROM game_player_modes WHERE game_id = $1`, gameID); err != nil {
 		return err
+	}
+	seen := map[int]bool{}
+	for _, mid := range ids {
+		if seen[mid] {
+			continue
+		}
+		seen[mid] = true
+		_, err := tx.Exec(ctx,
+			`INSERT INTO game_player_modes (game_id, mode_id) VALUES ($1, $2)`, gameID, mid)
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+			return ErrBadGenre
+		}
+		if err != nil {
+			return err
+		}
 	}
 	_, err := tx.Exec(ctx,
-		`INSERT INTO game_genres (game_id, genre_id, position) VALUES ($1, $2, 0)`,
-		gameID, *genreID)
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23503" {
-		return ErrBadGenre
-	}
+		`UPDATE games SET players = (
+            SELECT string_agg(pm.name_th, ', ' ORDER BY pm.id)
+              FROM game_player_modes gm JOIN player_modes pm ON pm.id = gm.mode_id
+             WHERE gm.game_id = $1) WHERE id = $1`, gameID)
 	return err
+}
+
+// setImages แทนที่รูปเพิ่มเติมทั้งหมด
+func setImages(ctx context.Context, tx pgx.Tx, gameID int64, urls []string) error {
+	if _, err := tx.Exec(ctx, `DELETE FROM game_images WHERE game_id = $1`, gameID); err != nil {
+		return err
+	}
+	for i, u := range urls {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO game_images (game_id, url, position) VALUES ($1, $2, $3)`, gameID, u, i); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// setPlatforms แทนที่แพลตฟอร์มทั้งหมด แล้วสรุปราคาต่ำสุด (หลังลด) กลับไปที่ games
+func setPlatforms(ctx context.Context, tx pgx.Tx, gameID int64, ps []GamePlatform) error {
+	if _, err := tx.Exec(ctx, `DELETE FROM game_platforms WHERE game_id = $1`, gameID); err != nil {
+		return err
+	}
+	for _, p := range ps {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO game_platforms (game_id, platform, price, discount_percent, download_url)
+             VALUES ($1, $2, $3, $4, $5)`,
+			gameID, p.Platform, p.Price, p.DiscountPercent, p.DownloadURL); err != nil {
+			return err
+		}
+	}
+	_, err := tx.Exec(ctx,
+		`UPDATE games SET
+            price = coalesce((SELECT min(round(price * (100 - discount_percent) / 100.0, 2))
+                                FROM game_platforms WHERE game_id = $1), 0),
+            platform = (SELECT string_agg(platform, ', ' ORDER BY platform)
+                          FROM game_platforms WHERE game_id = $1),
+            download_url = (SELECT download_url FROM game_platforms WHERE game_id = $1
+                             ORDER BY price, platform LIMIT 1)
+         WHERE id = $1`, gameID)
+	return err
+}
+
+func applyRelations(ctx context.Context, tx pgx.Tx, id int64, in GameInput) error {
+	if err := setGenres(ctx, tx, id, in.GenreIDs); err != nil {
+		return err
+	}
+	if err := setPlayerModes(ctx, tx, id, in.PlayerModeIDs); err != nil {
+		return err
+	}
+	if err := setImages(ctx, tx, id, in.Images); err != nil {
+		return err
+	}
+	return setPlatforms(ctx, tx, id, in.Platforms)
 }
 
 func (s *Store) CreateGame(ctx context.Context, in GameInput) (AdminGame, error) {
@@ -186,13 +301,12 @@ func (s *Store) CreateGame(ctx context.Context, in GameInput) (AdminGame, error)
 
 	var id int64
 	err = tx.QueryRow(ctx,
-		`INSERT INTO games (title, image_url, price, description, players, download_url, platform)
-         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-		in.Title, in.ImageURL, in.Price, in.Description, in.Players, in.DownloadURL, in.Platform).Scan(&id)
+		`INSERT INTO games (title, image_url, description) VALUES ($1, $2, $3) RETURNING id`,
+		in.Title, in.ImageURL, in.Description).Scan(&id)
 	if err != nil {
 		return AdminGame{}, err
 	}
-	if err := setMainGenre(ctx, tx, id, in.GenreID); err != nil {
+	if err := applyRelations(ctx, tx, id, in); err != nil {
 		return AdminGame{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -209,18 +323,15 @@ func (s *Store) UpdateGame(ctx context.Context, id int64, in GameInput) (AdminGa
 	defer tx.Rollback(ctx)
 
 	tag, err := tx.Exec(ctx,
-		`UPDATE games
-         SET title = $2, image_url = $3, price = $4, description = $5, players = $6,
-             download_url = $7, platform = $8, updated_at = now()
-         WHERE id = $1`,
-		id, in.Title, in.ImageURL, in.Price, in.Description, in.Players, in.DownloadURL, in.Platform)
+		`UPDATE games SET title = $2, image_url = $3, description = $4, updated_at = now()
+         WHERE id = $1`, id, in.Title, in.ImageURL, in.Description)
 	if err != nil {
 		return AdminGame{}, err
 	}
 	if tag.RowsAffected() == 0 {
 		return AdminGame{}, ErrNotFound
 	}
-	if err := setMainGenre(ctx, tx, id, in.GenreID); err != nil {
+	if err := applyRelations(ctx, tx, id, in); err != nil {
 		return AdminGame{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
